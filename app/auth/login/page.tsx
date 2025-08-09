@@ -40,7 +40,7 @@ export default function LoginPage() {
         throw new Error(result.error || 'Login failed')
       }
 
-      if (result.user.role === 'ADMIN') {
+      if (result.user.role === 'admin' || result.user.role === 'ADMIN') {
         router.push('/admin')
       } else {
         router.push('/dashboard')
