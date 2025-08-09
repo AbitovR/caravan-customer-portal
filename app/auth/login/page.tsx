@@ -61,16 +61,6 @@ export default function LoginPage() {
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <CardContent className="space-y-4">
-            <div className="p-3 bg-blue-50 text-blue-800 rounded-md text-sm border border-blue-200">
-              <strong>🔐 Demo Credentials:</strong><br />
-              <div className="mt-1 font-mono text-xs">
-                Email: demo@example.com<br />
-                Password: demo123
-              </div>
-              <div className="mt-2 text-xs opacity-75">
-                Admin: admin@caravantransport.io / demo123
-              </div>
-            </div>
             {error && (
               <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">
                 {error}
