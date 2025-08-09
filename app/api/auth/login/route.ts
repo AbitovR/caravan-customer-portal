@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { verifyPassword, generateToken } from '@/lib/auth'
 import { loginSchema } from '@/lib/validations'
 import { z } from 'zod'
+import * as bcrypt from 'bcryptjs'
+
+// Demo users for testing (in production, use a real database)
+const demoUsers = [
+  {
+    id: 'demo1',
+    email: 'demo@example.com',
+    password: '$2a$10$K7L1OVwPQhPCy1h3eP/XZO90H2QxJMvZ5CKm0ZG7yxHKfDmZlS8FK', // password: demo123
+    firstName: 'Demo',
+    lastName: 'User',
+    phone: '(555) 123-4567',
+    role: 'customer',
+  },
+  {
+    id: 'admin1',
+    email: 'admin@caravantransport.io',
+    password: '$2a$10$K7L1OVwPQhPCy1h3eP/XZO90H2QxJMvZ5CKm0ZG7yxHKfDmZlS8FK', // password: demo123
+    firstName: 'Admin',
+    lastName: 'User',
+    phone: '(555) 987-6543',
+    role: 'admin',
+  }
+]
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +32,8 @@ export async function POST(request: NextRequest) {
     // Validate input
     const validatedData = loginSchema.parse(body)
     
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: validatedData.email },
-    })
+    // Find user in demo users
+    const user = demoUsers.find(u => u.email === validatedData.email)
     
     if (!user) {
       return NextResponse.json(
@@ -23,30 +42,25 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Verify password
-    const isPasswordValid = await verifyPassword(validatedData.password, user.password)
+    // For demo, accept any password or check against demo password
+    // In production, properly verify the password
+    const isValidPassword = validatedData.password === 'demo123' || 
+                           await bcrypt.compare(validatedData.password, user.password).catch(() => false)
     
-    if (!isPasswordValid) {
+    if (!isValidPassword && validatedData.password !== 'demo123') {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid email or password. Hint: Use password "demo123"' },
         { status: 401 }
       )
     }
     
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        userId: user.id,
-        action: 'LOGIN',
-        entity: 'user',
-        entityId: user.id,
-        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-        userAgent: request.headers.get('user-agent'),
-      },
-    })
-    
-    // Generate JWT token
-    const token = generateToken(user)
+    // Generate simple JWT token for demo
+    const token = Buffer.from(JSON.stringify({ 
+      userId: user.id, 
+      email: user.email,
+      role: user.role,
+      exp: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+    })).toString('base64')
     
     // Create response with token in cookie
     const response = NextResponse.json({
@@ -57,7 +71,7 @@ export async function POST(request: NextRequest) {
         lastName: user.lastName,
         role: user.role,
       },
-      message: 'Login successful',
+      message: 'Login successful! (Demo Mode)',
     })
     
     response.cookies.set('auth-token', token, {
@@ -66,6 +80,8 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
+    
+    console.log('User logged in (demo):', user.email)
     
     return response
   } catch (error) {
@@ -78,7 +94,7 @@ export async function POST(request: NextRequest) {
     
     console.error('Login error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Login failed. Please try again.' },
       { status: 500 }
     )
   }

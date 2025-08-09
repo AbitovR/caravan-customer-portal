@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { registerSchema } from '@/lib/validations'
 import { z } from 'zod'
-import * as bcrypt from 'bcryptjs'
+import { registerSchema } from '@/lib/validations'
 
-// In-memory storage for demo (in production, use a real database)
-// This will reset when the serverless function cold starts
-const mockUsers = new Map<string, any>()
+// Mock user storage (in production, use a real database)
+const mockUsers: any[] = []
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,39 +12,34 @@ export async function POST(request: NextRequest) {
     // Validate input
     const validatedData = registerSchema.parse(body)
     
-    // Check if user already exists
-    if (mockUsers.has(validatedData.email)) {
+    // Check if user already exists (mock)
+    const existingUser = mockUsers.find(u => u.email === validatedData.email)
+    
+    if (existingUser) {
       return NextResponse.json(
         { error: 'User with this email already exists' },
         { status: 400 }
       )
     }
     
-    // Hash password
-    const hashedPassword = await bcrypt.hash(validatedData.password, 10)
-    
-    // Create user
+    // Create mock user
     const user = {
       id: Math.random().toString(36).substr(2, 9),
       email: validatedData.email,
-      password: hashedPassword,
       firstName: validatedData.firstName,
       lastName: validatedData.lastName,
-      phone: validatedData.phone || null,
+      phone: validatedData.phone,
       role: 'customer',
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     }
     
-    // Store user
-    mockUsers.set(validatedData.email, user)
+    // Add to mock storage
+    mockUsers.push(user)
     
-    // Generate simple JWT token for demo
+    // Create mock token
     const token = Buffer.from(JSON.stringify({ 
       userId: user.id, 
-      email: user.email,
-      role: user.role,
-      exp: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+      email: user.email 
     })).toString('base64')
     
     // Create response with token in cookie
@@ -58,7 +51,7 @@ export async function POST(request: NextRequest) {
         lastName: user.lastName,
         role: user.role,
       },
-      message: 'Registration successful! (Demo Mode - Data will not persist)',
+      message: 'Registration successful (Demo Mode)',
     })
     
     response.cookies.set('auth-token', token, {
@@ -67,8 +60,6 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
-    
-    console.log('User registered (demo):', user.email)
     
     return response
   } catch (error) {
@@ -81,7 +72,7 @@ export async function POST(request: NextRequest) {
     
     console.error('Registration error:', error)
     return NextResponse.json(
-      { error: 'Registration failed. Please try again.' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
