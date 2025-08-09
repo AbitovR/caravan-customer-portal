@@ -1,0 +1,289 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  SUPPORT
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum DocumentType {
+  ID
+  INSURANCE
+  REGISTRATION
+  TITLE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id                String            @id @default(cuid())
+  email             String            @unique
+  password          String
+  firstName         String
+  lastName          String
+  phone             String?
+  role              UserRole          @default(CUSTOMER)
+  emailVerified     Boolean           @default(false)
+  verificationToken String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  quotes            Quote[]
+  orders            Order[]
+  reviews           Review[]
+  documents         Document[]
+  supportTickets    SupportTicket[]
+  referralsSent     Referral[]        @relation("Referrer")
+  referralReceived  Referral?         @relation("Referred")
+  payments          Payment[]
+  notifications     Notification[]
+  activityLogs      ActivityLog[]
+}
+
+model Quote {
+  id                String            @id @default(cuid())
+  userId            String
+  pickupLocation    String
+  deliveryLocation  String
+  vehicleMake       String
+  vehicleModel      String
+  vehicleYear       Int
+  vehicleType       String
+  transportType     String            // open, enclosed
+  preferredDate     DateTime
+  flexibleDates     Boolean           @default(false)
+  price             Float
+  distance          Float
+  estimatedDays     Int
+  notes             String?
+  status            String            @default("pending")
+  expiresAt         DateTime
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  order             Order?
+}
+
+model Order {
+  id                String            @id @default(cuid())
+  userId            String
+  quoteId           String            @unique
+  orderNumber       String            @unique
+  status            OrderStatus       @default(PENDING)
+  pickupAddress     String
+  deliveryAddress   String
+  pickupDate        DateTime
+  deliveryDate      DateTime?
+  actualPickupDate  DateTime?
+  actualDeliveryDate DateTime?
+  carrierName       String?
+  carrierPhone      String?
+  driverName        String?
+  driverPhone       String?
+  trackingNumber    String?           @unique
+  totalAmount       Float
+  depositAmount     Float
+  balanceAmount     Float
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  quote             Quote             @relation(fields: [quoteId], references: [id])
+  documents         Document[]
+  payments          Payment[]
+  trackingUpdates   TrackingUpdate[]
+  review            Review?
+}
+
+model TrackingUpdate {
+  id                String            @id @default(cuid())
+  orderId           String
+  status            String
+  location          String?
+  description       String
+  createdAt         DateTime          @default(now())
+  
+  // Relations
+  order             Order             @relation(fields: [orderId], references: [id])
+}
+
+model Document {
+  id                String            @id @default(cuid())
+  userId            String
+  orderId           String?
+  type              DocumentType
+  name              String
+  url               String
+  size              Int
+  mimeType          String
+  uploadedAt        DateTime          @default(now())
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  order             Order?            @relation(fields: [orderId], references: [id])
+}
+
+model Payment {
+  id                String            @id @default(cuid())
+  userId            String
+  orderId           String
+  amount            Float
+  status            PaymentStatus     @default(PENDING)
+  method            String            // card, bank_transfer, etc
+  stripePaymentId   String?           @unique
+  stripeRefundId    String?
+  description       String?
+  metadata          Json?
+  processedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  order             Order             @relation(fields: [orderId], references: [id])
+}
+
+model Review {
+  id                String            @id @default(cuid())
+  userId            String
+  orderId           String            @unique
+  rating            Int               // 1-5
+  title             String?
+  comment           String
+  isPublic          Boolean           @default(true)
+  response          String?           // Admin response
+  respondedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  order             Order             @relation(fields: [orderId], references: [id])
+}
+
+model Referral {
+  id                String            @id @default(cuid())
+  referrerId        String
+  referredId        String?           @unique
+  referredEmail     String
+  code              String            @unique
+  status            String            @default("pending") // pending, completed, expired
+  reward            Float             @default(50)
+  rewardClaimed     Boolean           @default(false)
+  expiresAt         DateTime
+  completedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  
+  // Relations
+  referrer          User              @relation("Referrer", fields: [referrerId], references: [id])
+  referred          User?             @relation("Referred", fields: [referredId], references: [id])
+}
+
+model SupportTicket {
+  id                String            @id @default(cuid())
+  userId            String
+  subject           String
+  description       String
+  priority          String            @default("medium") // low, medium, high, urgent
+  status            TicketStatus      @default(OPEN)
+  category          String            // billing, shipping, technical, other
+  assignedTo        String?
+  resolvedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  messages          TicketMessage[]
+}
+
+model TicketMessage {
+  id                String            @id @default(cuid())
+  ticketId          String
+  senderId          String
+  message           String
+  attachments       Json?             // Array of attachment URLs
+  isInternal        Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  
+  // Relations
+  ticket            SupportTicket     @relation(fields: [ticketId], references: [id])
+}
+
+model Notification {
+  id                String            @id @default(cuid())
+  userId            String
+  title             String
+  message           String
+  type              String            // order_update, payment, referral, system
+  read              Boolean           @default(false)
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+}
+
+model ActivityLog {
+  id                String            @id @default(cuid())
+  userId            String
+  action            String
+  entity            String            // order, quote, payment, etc
+  entityId          String
+  metadata          Json?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime          @default(now())
+  
+  // Relations
+  user              User              @relation(fields: [userId], references: [id])
+  
+  @@index([userId, createdAt])
+}
+
+model Settings {
+  id                String            @id @default(cuid())
+  key               String            @unique
+  value             Json
+  description       String?
+  updatedAt         DateTime          @updatedAt
+}
